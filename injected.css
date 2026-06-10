@@ -1,0 +1,56 @@
+/* IGXE Price Helper - 注入样式 */
+
+/* 价格信息容器 */
+.igxe-helper-price {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 10px 4px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  gap: 6px;
+}
+
+/* Steam参考价 - 灰色调，低调 */
+.igxe-helper-steam {
+  color: #8b8b8b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* 自动发货价格 - 绿色高亮 */
+.igxe-helper-auto {
+  color: #4caf50;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 底价（fallback：无自动发货时显示全部在售最低价） - 橙色 */
+.igxe-helper-lowest {
+  color: #ff9800;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 自动发货无数据 - 灰色 */
+.igxe-helper-na {
+  color: #555;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* 加载中状态 */
+.igxe-helper-loading {
+  color: #666;
+  font-size: 11px;
+  font-style: italic;
+}
+
+/* 获取失败状态 */
+.igxe-helper-fail {
+  color: #999;
+  font-size: 11px;
+}
