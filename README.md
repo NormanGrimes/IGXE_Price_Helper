@@ -1,6 +1,6 @@
-# IGXE Price Helper v1.0.1
+# IGXE Price Helper v1.0.2
 
-在 IGXE 饰品库存页（`/inventory/skins/730`）自动展示 Steam 参考价和自动发货最低价，无需逐个点进详情页。
+在 IGXE 饰品库存页（`/inventory/skins/730`）和我的在架页（`/sell/730`）自动展示 Steam 参考价和自动发货最低价。
 
 ---
 
@@ -32,10 +32,11 @@
 
 ## 使用方法
 
-1. 登录 [igxe.cn](https://www.igxe.cn)，进入饰品库存页（`/inventory/skins/730`）
-2. 插件自动扫描页面饰品卡片，排队逐张获取价格
-3. 每张卡片下方会显示价格标签（见下方说明）
-4. 点击扩展弹窗中的 **重新获取价格** 可强制刷新
+1. 登录 [igxe.cn](https://www.igxe.cn)
+2. 打开 **饰品库存页**（`/inventory/skins/730`）或 **我的在架页**（`/sell/730`）
+3. 插件自动扫描卡片，排队逐张获取价格
+4. 每张卡片下方显示市场参考价格标签
+5. 点击弹窗中的 **重新获取价格** 可强制刷新
 
 ---
 
@@ -81,10 +82,12 @@
 igxe-price-helper/
 ├── manifest.json         ← MV3 配置（版本号、权限、注入规则）
 ├── background.js         ← Service Worker（兼容旧消息接口）
-├── content-inventory.js  ← 库存页注入脚本（核心逻辑）
+├── content-inventory.js  ← 库存页注入脚本
+├── content-sell.js       ← 在售页注入脚本
 ├── injected.css          ← 注入样式（价格标签颜色/布局）
 ├── popup.html            ← 扩展弹窗界面
 ├── popup.js              ← 弹窗逻辑（状态检测、刷新按钮）
+├── README.md
 └── icons/
     ├── icon16.png
     ├── icon48.png
@@ -129,16 +132,31 @@ GET /product/trade/730/{productId}?buy_method={0,1,2}&sort=0&sort_rule=0
 
 ### 架构
 
+| 页面 | 脚本 | 卡片选择器 | 分页方式 | Bot 过滤 |
+|------|------|-----------|----------|----------|
+| 库存页 `/inventory/skins/730` | `content-inventory.js` | `.game-unit` + `data-pid` | 滚动懒加载 | ✅ 仅当前 Bot |
+| 在售页 `/sell/730` | `content-sell.js` | `.game-unit` + `data-trade-id` | `#js-load-more` 点击 | ❌ 全部 Bot |
+
 | 数据 | 请求位置 | 方式 |
 |------|----------|------|
-| Steam 参考价 | `content-inventory.js`（页面上下文） | fetch 产品页 HTML → 正则提取 |
-| 自动发货最低价 | `content-inventory.js`（页面上下文） | fetch API → 解析 `page_rows` |
+| Steam 参考价 | 页面上下文 | fetch 产品页 HTML → 正则提取 |
+| 自动发货最低价 | 页面上下文 | fetch API → 解析 `page_rows` |
 
-所有请求在页面上下文直接执行，天然携带 Cookie，避免因 Chrome MV3 Service Worker 生命周期导致的超时问题。
+所有请求在页面上下文直接执行，天然携带 Cookie，避免 Chrome MV3 Service Worker 生命周期超时。
 
 ---
 
 ## 版本记录
+
+### v1.0.2 — 2026-06-05
+
+- ✅ **新功能**：支持「我的在架」页面（`https://www.igxe.cn/sell/730`）
+  - 独立内容脚本 `content-sell.js`，复用价格获取逻辑
+  - 适配在售页卡片结构：`.put-sell-item.game-unit` + `data-trade-id`
+  - 拦截 `#js-load-more` 点击分页，自动扫描新加载卡片
+  - 无需 Bot 账号过滤（在售页展示所有 Bot 物品）
+- ✅ `popup.js` 弹窗支持双重 URL 检测（`/inventory` + `/sell`）
+- ✅ `popup.html` 界面文案更新
 
 ### v1.0.1（正式版）— 2026-06-05
 
@@ -159,7 +177,7 @@ GET /product/trade/730/{productId}?buy_method={0,1,2}&sort=0&sort_rule=0
 ## 已知限制
 
 - 需要登录 IGXE 账号才能获取完整价格数据
-- 仅支持 CS2（`/inventory/skins/730`）库存页
+- 仅支持 CS2 库存页（`/inventory/skins/730`）和我的在架页（`/sell/730`）
 
 ---
 

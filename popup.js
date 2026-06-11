@@ -13,8 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // 两步检测：先看 URL，再 ping content script 确认已注入
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tab = tabs[0];
-    if (!tab || !tab.url || !tab.url.includes('igxe.cn/inventory')) {
-      setStatus(false, '请打开饰品库存页面');
+    if (!tab || !tab.url || (!tab.url.includes('igxe.cn/inventory') && !tab.url.includes('igxe.cn/sell'))) {
+      setStatus(false, '请打开库存/在售页面');
       return;
     }
 

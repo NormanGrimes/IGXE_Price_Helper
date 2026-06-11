@@ -54,3 +54,77 @@
   color: #999;
   font-size: 11px;
 }
+
+/* ========================
+   刷新按钮栏
+   ======================== */
+.igxe-sell-refresh-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin: 8px 0;
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+}
+
+.igxe-sell-cache-info {
+  font-size: 12px;
+  color: #7a7a9a;
+}
+
+.igxe-sell-refresh-btn {
+  padding: 4px 14px;
+  font-size: 12px;
+  color: #ccc;
+  background: #2a2a4a;
+  border: 1px solid #3a3a5a;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.igxe-sell-refresh-btn:hover {
+  background: #3a3a5a;
+  color: #fff;
+}
+
+.igxe-sell-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========================
+   改价弹窗内价格注入
+   ======================== */
+.igxe-modal-price {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.igxe-modal-steam {
+  color: #8b8b8b;
+  white-space: nowrap;
+}
+
+.igxe-modal-auto {
+  color: #4caf50;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.igxe-modal-lowest {
+  color: #ff9800;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.igxe-modal-na {
+  color: #aaa;
+  font-size: 10px;
+}
