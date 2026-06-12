@@ -35,9 +35,9 @@
   white-space: nowrap;
 }
 
-/* 自动发货无数据 - 灰色 */
+/* 无在售数据 - 红色 */
 .igxe-helper-na {
-  color: #555;
+  color: #e53935;
   font-size: 11px;
   white-space: nowrap;
 }
@@ -125,6 +125,69 @@
 }
 
 .igxe-modal-na {
-  color: #aaa;
+  color: #e53935;
   font-size: 10px;
+}
+
+/* ========================
+   卡片复制按钮
+   ======================== */
+.igxe-copy-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-size: 14px;
+  line-height: 26px;
+  text-align: center;
+  color: #8b8b8b;
+  background: rgba(26, 26, 46, 0.80);
+  border: 1px solid #2a2a4a;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: auto !important;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+  z-index: 20;
+  user-select: none;
+}
+
+.game-unit:hover .igxe-copy-btn {
+  opacity: 1;
+}
+
+.igxe-copy-btn:hover {
+  color: #4caf50;
+  background: rgba(42, 42, 74, 0.9);
+  border-color: #4caf50;
+}
+
+.igxe-copy-btn:active {
+  background: #4caf50;
+  color: #fff;
+}
+
+.igxe-copy-btn.igxe-copied {
+  color: #fff;
+  background: #4caf50;
+  border-color: #4caf50;
+}
+
+/* ========================
+   贩卖总数差值标签
+   ======================== */
+.igxe-sell-delta {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.igxe-sell-sold {
+  color: #ef5350;
+}
+
+.igxe-sell-listed {
+  color: #4caf50;
 }

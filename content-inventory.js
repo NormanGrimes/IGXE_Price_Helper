@@ -269,7 +269,7 @@
       const tip  = autoResult.isAuto ? '自动发货最低价' : '全部在售最低价';
       html += `<span class="${cls}" title="${tip}">${label} ¥${autoResult.price.toFixed(2)}</span>`;
     } else if (steamPrice !== null && steamPrice !== undefined) {
-      html += '<span class="igxe-helper-na" title="暂无价格数据">-</span>';
+      html += '<span class="igxe-helper-na" title="当前无在售">当前无在售</span>';
     }
     if (!html) {
       html = '<span class="igxe-helper-fail">暂无数据</span>';
@@ -490,6 +490,7 @@
     if (observerTimer) clearTimeout(observerTimer);
     observerTimer = setTimeout(() => {
       insertRefreshButton();   // 排序/筛选后 DOM 重建，重新插入按钮
+      injectAllCopyButtons();  // DOM 重建后重新注入复制按钮
       enqueueNewCards();
       processQueue();
     }, OBSERVER_DEBOUNCE);
@@ -519,6 +520,8 @@
 
       startObserver();
       startBotWatcher();
+      startModalWatcher();
+      injectAllCopyButtons();
 
       if (Object.keys(priceCache).length > 0) {
         // 有缓存：应用缓存数据，不自动拉取
@@ -559,7 +562,296 @@
     isProcessing = false;
     document.querySelectorAll('.igxe-helper-price').forEach(el => el.remove());
     insertRefreshButton();
+    injectAllCopyButtons();
     kickoff();
+  }
+
+  // ========================
+  // 卡片复制按钮
+  // ========================
+
+  /**
+   * 从卡片 DOM 提取完整物品名称，如 "P90 | 擦擦 (崭新出厂)"
+   * 策略：
+   *   1. title 属性优先（IGXE 可能不含磨损 → 单独拼接）
+   *   2. title属性 + 磨损标签 → 完整名称
+   *   3. textContent 过滤 x1/¥ 杂质 + 磨损
+   */
+  function getCardItemName(card) {
+    const titleEl = card.querySelector('.g_title');
+    if (!titleEl) return null;
+
+    // 提取基础名称（从 title 或 过滤后的 textContent）
+    let baseName = null;
+    const tAttr = titleEl.getAttribute('title');
+    if (tAttr && tAttr.trim() && tAttr.includes('|')) baseName = tAttr.trim();
+    if (!baseName) {
+      // fallback: textContent 按行拆分取首行含 | 的文本
+      // sell 页多行各含数量/价格/状态 → split 后每行天然干净
+      // inventory 页可能单行含杂质 → 正则剔除 x1 / ¥ / 在售
+      const lines = titleEl.textContent.split(/[\r\n]+/);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.includes('|') && trimmed.length > 2) {
+          baseName = trimmed.replace(/\s*x\d+\s*/g, '')
+                           .replace(/\s*[¥￥]\s*[\d.]+\s*/g, '')
+                           .replace(/\s*在售\s*/g, '')
+                           .trim();
+          break;
+        }
+      }
+    }
+    if (!baseName) return null;
+
+    // 提取磨损值，拼接到名称后面
+    const wear = getWearText(card);
+    if (wear && !baseName.includes(wear)) {
+      return `${baseName} (${wear})`;
+    }
+    return baseName;
+  }
+
+  /**
+   * 从卡片中提取磨损/品质文本
+   * 常见 IGXE 标签缩略 → 全名映射
+   */
+  const WEAR_MAP = {
+    '崭新出厂': '崭新出厂', '崭新': '崭新出厂',
+    '略有磨损': '略有磨损', '略磨': '略有磨损',
+    '久经沙场': '久经沙场', '久经': '久经沙场',
+    '破损不堪': '破损不堪', '破损': '破损不堪',
+    '战痕累累': '战痕累累', '战痕': '战痕累累',
+  };
+
+  function getWearText(card) {
+    // 策略1: 查找卡片内所有包含磨损关键词的 span/div
+    const wearKeys = Object.keys(WEAR_MAP);
+    const allEls = card.querySelectorAll('span, div, i, em, label, [class*="tag"], [class*="wear"], [class*="quality"]');
+    for (const el of allEls) {
+      const txt = el.textContent.trim();
+      // 检查 title 属性（可能存全名）
+      const tip = el.getAttribute('title');
+      if (tip) {
+        for (const key of wearKeys) {
+          if (tip.includes(key)) return WEAR_MAP[key];
+        }
+      }
+      // 检查 textContent
+      for (const key of wearKeys) {
+        if (txt === key || txt.includes(key)) return WEAR_MAP[key];
+      }
+    }
+
+    // 策略2: 直接搜索卡片内全部文本节点
+    const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const txt = node.textContent.trim();
+      for (const key of wearKeys) {
+        if (txt === key) return WEAR_MAP[key];
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 为单张卡片注入复制按钮
+   */
+  function injectCopyButton(card) {
+    if (card.querySelector('.igxe-copy-btn')) return; // 已注入
+
+    const name = getCardItemName(card);
+    if (!name) return;
+
+    const btn = document.createElement('button');
+    btn.className = 'igxe-copy-btn';
+    btn.title = '复制物品名称';
+    btn.textContent = '📋';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      navigator.clipboard.writeText(name).then(() => {
+        btn.textContent = '✓';
+        btn.classList.add('igxe-copied');
+        setTimeout(() => {
+          btn.textContent = '📋';
+          btn.classList.remove('igxe-copied');
+        }, 1200);
+      }).catch(() => {});
+    });
+
+    card.style.position = card.style.position || 'relative';
+    card.appendChild(btn);
+  }
+
+  /**
+   * 为所有卡片注入复制按钮
+   */
+  function injectAllCopyButtons() {
+    document.querySelectorAll('.game-unit').forEach(card => {
+      if (belongsToCurrentBot(card)) {
+        injectCopyButton(card);
+      }
+    });
+  }
+
+  // ========================
+  // 物品上架弹窗价格注入
+  // ========================
+  let modalRetryTimer = null;
+
+  /**
+   * 从弹窗行中提取 productId，尝试多种策略
+   */
+  function extractProductIdFromRow(row) {
+    // 策略1: product-url 属性
+    const pu = row.querySelector('[product-url]');
+    if (pu) { const id = extractProductId(pu.getAttribute('product-url')); if (id) return id; }
+
+    // 策略2: href="/product/730/xxx" 链接
+    const links = row.querySelectorAll('a[href*="/product/730/"]');
+    for (const a of links) { const id = extractProductId(a.getAttribute('href')); if (id) return id; }
+
+    // 策略3: data-product-id / data-pid / data-trade-id
+    const dp = row.querySelector('[data-product-id], [data-pid], [data-trade-id]');
+    if (dp) return dp.getAttribute('data-product-id') || dp.getAttribute('data-pid');
+
+    // 策略4: 从 data-pid 反查 productCardGroups
+    const pidAttr = row.closest ? row.closest('[data-pid]') : null;
+    if (pidAttr) return pidAttr.getAttribute('data-pid');
+
+    return null;
+  }
+
+  function getRefPriceColumnIndex(modal) {
+    const headers = modal.querySelectorAll('th, [class*="header"], [class*="thead"] th, [class*="thead"] div');
+    for (let i = 0; i < headers.length; i++) {
+      if (headers[i].textContent.trim() === '参考价') return i;
+    }
+    return -1;
+  }
+
+  function findRefPriceCell(row, colIndex) {
+    // 策略1: 按列号取单元格
+    if (colIndex >= 0) {
+      const cells = row.querySelectorAll('td');
+      if (cells[colIndex]) return cells[colIndex];
+    }
+
+    // 策略2: class 含 ref/reference
+    const ref = row.querySelector('[class*="ref"], [class*="reference"]');
+    if (ref) return ref;
+
+    // 策略3: 内容匹配纯数字价格
+    const cells = row.querySelectorAll('td, [class*="cell"], [class*="col"]');
+    for (const c of cells) {
+      const t = c.textContent.trim();
+      if (/^\d+(\.\d{1,2})?$/.test(t)) return c;
+    }
+
+    return null;
+  }
+
+  function injectPriceToCell(cell, productId) {
+    const old = cell.querySelector('.igxe-modal-price');
+    if (old) old.remove();
+
+    const cached = priceCache[productId];
+    if (!cached) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'igxe-modal-price';
+
+    if (cached.steamPrice !== null && cached.steamPrice !== undefined) {
+      wrapper.innerHTML += `<span class="igxe-modal-steam">Steam ¥${cached.steamPrice.toFixed(2)}</span>`;
+    }
+
+    if (cached.autoPrice !== null) {
+      const label = cached.isAuto ? '自动' : '底价';
+      const cls   = cached.isAuto ? 'igxe-modal-auto' : 'igxe-modal-lowest';
+      wrapper.innerHTML += `<span class="${cls}">${label} ¥${cached.autoPrice.toFixed(2)}</span>`;
+    } else if (cached.steamPrice === null || cached.steamPrice === undefined) {
+      wrapper.innerHTML += '<span class="igxe-modal-na">暂无数据</span>';
+    }
+
+    cell.appendChild(wrapper);
+  }
+
+  function injectModalPrices(modal, retries = 0) {
+    modal.querySelectorAll('.igxe-modal-price').forEach(el => el.remove());
+
+    const colIndex = getRefPriceColumnIndex(modal);
+    const rows = modal.querySelectorAll('tbody tr');
+
+    if (rows.length === 0) {
+      if (retries >= 5) {
+        console.log('[IGXE-Inv] 弹窗重试超时，放弃注入');
+        return;
+      }
+      console.log(`[IGXE-Inv] 弹窗表格未就绪，500ms后重试(${retries + 1}/5)...`);
+      if (modalRetryTimer) clearTimeout(modalRetryTimer);
+      modalRetryTimer = setTimeout(() => injectModalPrices(modal, retries + 1), 500);
+      return;
+    }
+
+    if (modalRetryTimer) clearTimeout(modalRetryTimer);
+    console.log(`[IGXE-Inv] 弹窗检测: 参考价列号=${colIndex}, 行数=${rows.length}`);
+
+    let injected = 0;
+    rows.forEach(row => {
+      const productId = extractProductIdFromRow(row);
+      if (!productId) return;
+
+      const cell = findRefPriceCell(row, colIndex);
+      if (!cell) return;
+
+      if (!priceCache[productId]) return;
+
+      injectPriceToCell(cell, productId);
+      injected++;
+    });
+
+    if (injected > 0) {
+      console.log(`[IGXE-Inv] 弹窗价格注入: ${injected} 个道具`);
+    }
+  }
+
+  function startModalWatcher() {
+    const MODAL_SELECTORS = [
+      '.layui-layer',
+      '.el-dialog__body',
+      '.el-dialog',
+      '[role="dialog"]',
+    ];
+
+    const modalObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue;
+
+          for (const sel of MODAL_SELECTORS) {
+            let modal = null;
+            if (node.matches && node.matches(sel)) {
+              modal = node;
+            } else if (node.querySelector) {
+              modal = node.querySelector(sel);
+            }
+            if (modal) {
+              setTimeout(() => injectModalPrices(modal), 400);
+              return;
+            }
+          }
+        }
+      }
+    });
+
+    modalObserver.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    console.log('[IGXE-Inv] 物品上架弹窗监视器已就绪');
   }
 
   if (document.readyState === 'loading') {

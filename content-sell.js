@@ -246,7 +246,7 @@
       const tip  = autoResult.isAuto ? '自动发货最低价' : '全部在售最低价';
       html += `<span class="${cls}" title="${tip}">${label} ¥${autoResult.price.toFixed(2)}</span>`;
     } else if (steamPrice !== null && steamPrice !== undefined) {
-      html += '<span class="igxe-helper-na" title="暂无价格数据">-</span>';
+      html += '<span class="igxe-helper-na" title="当前无在售">当前无在售</span>';
     }
     if (!html) {
       html = '<span class="igxe-helper-fail">暂无数据</span>';
@@ -399,6 +399,111 @@
   }
 
   // ========================
+  // 卡片复制按钮
+  // ========================
+
+  /**
+   * 从卡片 DOM 提取完整物品名称，如 "P90 | 擦擦 (崭新出厂)"
+   * 策略：title 属性优先，否则 textContent 过滤 + 磨损值拼接
+   */
+  function getCardItemName(card) {
+    const titleEl = card.querySelector('.g_title');
+    if (!titleEl) return null;
+
+    let baseName = null;
+    const tAttr = titleEl.getAttribute('title');
+    if (tAttr && tAttr.trim() && tAttr.includes('|')) baseName = tAttr.trim();
+    if (!baseName) {
+      // fallback: textContent 按行拆分取首行含 | 的文本
+      // sell 页多行各含数量/价格/状态 → split 后每行天然干净
+      // inventory 页可能单行含杂质 → 正则剔除 x1 / ¥ / 在售
+      const lines = titleEl.textContent.split(/[\r\n]+/);
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.includes('|') && trimmed.length > 2) {
+          baseName = trimmed.replace(/\s*x\d+\s*/g, '')
+                           .replace(/\s*[¥￥]\s*[\d.]+\s*/g, '')
+                           .replace(/\s*在售\s*/g, '')
+                           .trim();
+          break;
+        }
+      }
+    }
+    if (!baseName) return null;
+
+    const wear = getWearText(card);
+    if (wear && !baseName.includes(wear)) {
+      return `${baseName} (${wear})`;
+    }
+    return baseName;
+  }
+
+  const WEAR_MAP = {
+    '崭新出厂': '崭新出厂', '崭新': '崭新出厂',
+    '略有磨损': '略有磨损', '略磨': '略有磨损',
+    '久经沙场': '久经沙场', '久经': '久经沙场',
+    '破损不堪': '破损不堪', '破损': '破损不堪',
+    '战痕累累': '战痕累累', '战痕': '战痕累累',
+  };
+
+  function getWearText(card) {
+    const wearKeys = Object.keys(WEAR_MAP);
+    const allEls = card.querySelectorAll('span, div, i, em, label, [class*="tag"], [class*="wear"], [class*="quality"]');
+    for (const el of allEls) {
+      const txt = el.textContent.trim();
+      const tip = el.getAttribute('title');
+      if (tip) {
+        for (const key of wearKeys) {
+          if (tip.includes(key)) return WEAR_MAP[key];
+        }
+      }
+      for (const key of wearKeys) {
+        if (txt === key || txt.includes(key)) return WEAR_MAP[key];
+      }
+    }
+    const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const txt = node.textContent.trim();
+      for (const key of wearKeys) {
+        if (txt === key) return WEAR_MAP[key];
+      }
+    }
+    return null;
+  }
+
+  function injectCopyButton(card) {
+    if (card.querySelector('.igxe-copy-btn')) return;
+
+    const name = getCardItemName(card);
+    if (!name) return;
+
+    const btn = document.createElement('button');
+    btn.className = 'igxe-copy-btn';
+    btn.title = '复制物品名称';
+    btn.textContent = '📋';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      navigator.clipboard.writeText(name).then(() => {
+        btn.textContent = '✓';
+        btn.classList.add('igxe-copied');
+        setTimeout(() => {
+          btn.textContent = '📋';
+          btn.classList.remove('igxe-copied');
+        }, 1200);
+      }).catch(() => {});
+    });
+
+    card.style.position = card.style.position || 'relative';
+    card.appendChild(btn);
+  }
+
+  function injectAllCopyButtons() {
+    document.querySelectorAll('.game-unit').forEach(card => injectCopyButton(card));
+  }
+
+  // ========================
   // 刷新按钮
   // ========================
 
@@ -470,6 +575,7 @@
     if (observerTimer) clearTimeout(observerTimer);
     observerTimer = setTimeout(() => {
       insertRefreshButton();   // 排序/筛选后 DOM 重建，重新插入按钮
+      injectAllCopyButtons();  // DOM 重建后重新注入复制按钮
       enqueueNewCards();
       processQueue();
     }, OBSERVER_DEBOUNCE);
@@ -514,6 +620,8 @@
       startObserver();
       startLoadMoreInterceptor();
       startModalWatcher();
+      startSellCountWatcher();
+      injectAllCopyButtons();
 
       if (Object.keys(priceCache).length > 0) {
         // 有缓存：应用缓存数据，不自动拉取
@@ -736,12 +844,90 @@
     console.log('[IGXE-Sell] 改价弹窗监视器已就绪');
   }
 
+  // ========================
+  // 贩卖总数监测
+  // ========================
+
+  const SELL_COUNT_CACHE_KEY = 'igxe_sell_total_count';
+
+  /**
+   * 从页面 DOM 中提取「贩卖总数」数值
+   * DOM: <div class="fs12 dib mr5">贩卖总数：<span class="c-4" id="js-total-qty">147</span></div>
+   * @returns {{ element: HTMLElement, count: number } | null}
+   */
+  function getSellTotalInfo() {
+    const qtyEl = document.getElementById('js-total-qty');
+    if (!qtyEl) return null;
+    const count = parseInt(qtyEl.textContent, 10);
+    if (isNaN(count)) return null;
+    return { element: qtyEl.parentElement, count };
+  }
+
+  function getCachedSellCount() {
+    try {
+      const raw = localStorage.getItem(SELL_COUNT_CACHE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function saveCachedSellCount(count) {
+    try {
+      localStorage.setItem(SELL_COUNT_CACHE_KEY, JSON.stringify({ count, ts: Date.now() }));
+    } catch (e) {}
+  }
+
+  /**
+   * 检测贩卖总数变化，注入出售/上架差值标签
+   */
+  function checkSellTotal() {
+    const info = getSellTotalInfo();
+    if (!info) return;
+
+    const currentCount = info.count;
+    const cached = getCachedSellCount();
+
+    // 移除旧差值标签
+    const existing = document.getElementById('igxe-sell-delta');
+    if (existing) existing.remove();
+
+    if (cached && cached.count !== currentCount) {
+      const delta = currentCount - cached.count;
+      const deltaEl = document.createElement('span');
+      deltaEl.id = 'igxe-sell-delta';
+      if (delta < 0) {
+        deltaEl.className = 'igxe-sell-delta igxe-sell-sold';
+        deltaEl.textContent = `-出售 ${Math.abs(delta)}  `;
+        console.log(`[IGXE-Sell] 贩卖总数减少: ${cached.count} → ${currentCount}（出售 ${Math.abs(delta)} 件）`);
+      } else {
+        deltaEl.className = 'igxe-sell-delta igxe-sell-listed';
+        deltaEl.textContent = `+上架 ${delta}  `;
+        console.log(`[IGXE-Sell] 贩卖总数增加: ${cached.count} → ${currentCount}（上架 ${delta} 件）`);
+      }
+      if (info.element && info.element.parentNode) {
+        info.element.parentNode.insertBefore(deltaEl, info.element);
+      }
+    }
+
+    // 始终更新缓存（首次写入 or 值没变也刷新 ts）
+    if (!cached || cached.count !== currentCount) {
+      saveCachedSellCount(currentCount);
+    }
+  }
+
+  function startSellCountWatcher() {
+    // 首次检测延迟，等页面渲染完成
+    setTimeout(checkSellTotal, 3000);
+    // 定期轮询（页面定时刷新会更新此值）
+    setInterval(checkSellTotal, 5000);
+  }
+
   function forceRefreshAll() {
     processedProducts.clear();
     productCardGroups.clear();
     pendingQueue.length = 0;
     isProcessing = false;
     document.querySelectorAll('.igxe-helper-price').forEach(el => el.remove());
+    injectAllCopyButtons();
     kickoff();
   }
 
