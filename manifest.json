@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "IGXE Price Helper",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "在饰品库存页和我的在架页显示Steam参考价和自动发货最低价",
   "permissions": [
     "storage"

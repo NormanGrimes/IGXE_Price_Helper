@@ -412,15 +412,13 @@
 
     let baseName = null;
     const tAttr = titleEl.getAttribute('title');
-    if (tAttr && tAttr.trim() && tAttr.includes('|')) baseName = tAttr.trim();
+    if (tAttr && tAttr.trim()) baseName = tAttr.trim();
     if (!baseName) {
-      // fallback: textContent 按行拆分取首行含 | 的文本
-      // sell 页多行各含数量/价格/状态 → split 后每行天然干净
-      // inventory 页可能单行含杂质 → 正则剔除 x1 / ¥ / 在售
+      // fallback: textContent 按行拆分取首行有效文本
       const lines = titleEl.textContent.split(/[\r\n]+/);
       for (const line of lines) {
         const trimmed = line.trim();
-        if (trimmed.includes('|') && trimmed.length > 2) {
+        if (trimmed.length > 2) {
           baseName = trimmed.replace(/\s*x\d+\s*/g, '')
                            .replace(/\s*[¥￥]\s*[\d.]+\s*/g, '')
                            .replace(/\s*在售\s*/g, '')
@@ -480,19 +478,44 @@
 
     const btn = document.createElement('button');
     btn.className = 'igxe-copy-btn';
-    btn.title = '复制物品名称';
+    btn.title = '搜索此物品';
     btn.textContent = '📋';
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      navigator.clipboard.writeText(name).then(() => {
-        btn.textContent = '✓';
-        btn.classList.add('igxe-copied');
+
+      // 填入搜索框并触发搜索
+      const searchInput = document.getElementById('store_search_key');
+      const searchBtn   = document.getElementById('js-btn-search-key');
+      if (searchInput && searchBtn) {
+        searchInput.value = name;
+        // 触发 input/change 事件，兼容 Vue/jQuery 数据绑定
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+        // 移除 javascript: href 避免 CSP 报错，然后触发点击
+        const searchHref = searchBtn.getAttribute('href');
+        if (searchHref) searchBtn.removeAttribute('href');
+        searchBtn.click();
+        if (searchHref) searchBtn.setAttribute('href', searchHref);
+
+        // 勾选全选
         setTimeout(() => {
-          btn.textContent = '📋';
-          btn.classList.remove('igxe-copied');
-        }, 1200);
-      }).catch(() => {});
+          const checkAll = document.getElementById('js-check-all');
+          if (checkAll) {
+            checkAll.click();
+          }
+        }, 200);
+      }
+
+      // 同时写入剪贴板（保留原有能力）
+      navigator.clipboard.writeText(name).catch(() => {});
+
+      btn.textContent = '✓';
+      btn.classList.add('igxe-copied');
+      setTimeout(() => {
+        btn.textContent = '📋';
+        btn.classList.remove('igxe-copied');
+      }, 1200);
     });
 
     card.style.position = card.style.position || 'relative';
@@ -622,6 +645,50 @@
       startModalWatcher();
       startSellCountWatcher();
       injectAllCopyButtons();
+
+      // 确认出售后：轮询检测售出对话框关闭 → 延迟2秒重新执行搜索
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.js-btn-conf-sale')) return;
+        console.log('[IGXE-Sell] 检测到"确认出售"点击，开始监控售出流程...');
+
+        const searchInput = document.getElementById('store_search_key');
+        const searchName  = searchInput ? searchInput.value.trim() : '';
+        if (!searchName) return;
+
+        let pollCount = 0;
+        const pollTimer = setInterval(() => {
+          pollCount++;
+          // 检测售出弹窗是否已关闭（layui-layer 从 DOM 中移除）
+          const saleLayer = document.querySelector('.layui-layer #js-igxe-sale-data');
+          const closed = !saleLayer || saleLayer.offsetParent === null;
+
+          if (closed) {
+            clearInterval(pollTimer);
+            console.log(`[IGXE-Sell] 售出弹窗已关闭 (轮询${pollCount}次)，2秒后重新搜索: "${searchName}"`);
+            // 等待 load_data 完成后再触发搜索
+            setTimeout(() => {
+              const si = document.getElementById('store_search_key');
+              const sb = document.getElementById('js-btn-search-key');
+              if (si && sb) {
+                si.value = searchName;
+                si.dispatchEvent(new Event('input', { bubbles: true }));
+                si.dispatchEvent(new Event('change', { bubbles: true }));
+                const href = sb.getAttribute('href');
+                if (href) sb.removeAttribute('href');
+                sb.click();
+                if (href) sb.setAttribute('href', href);
+                console.log('[IGXE-Sell] 重新搜索已执行');
+              }
+            }, 2000);
+          }
+
+          // 安全超时：30秒后停止轮询
+          if (pollCount >= 60) {
+            clearInterval(pollTimer);
+            console.log('[IGXE-Sell] 售出流程监控超时(30s)，放弃重新搜索');
+          }
+        }, 500);
+      });
 
       if (Object.keys(priceCache).length > 0) {
         // 有缓存：应用缓存数据，不自动拉取

@@ -523,6 +523,15 @@
       startModalWatcher();
       injectAllCopyButtons();
 
+      // 点击定价出售时清空搜索框
+      const priceSaleBtn = document.getElementById('js-local-store-igxe');
+      if (priceSaleBtn) {
+        priceSaleBtn.addEventListener('click', () => {
+          const searchInput = document.getElementById('store_search_key');
+          if (searchInput) searchInput.value = '';
+        });
+      }
+
       if (Object.keys(priceCache).length > 0) {
         // 有缓存：应用缓存数据，不自动拉取
         applyCacheToCards();
@@ -584,15 +593,13 @@
     // 提取基础名称（从 title 或 过滤后的 textContent）
     let baseName = null;
     const tAttr = titleEl.getAttribute('title');
-    if (tAttr && tAttr.trim() && tAttr.includes('|')) baseName = tAttr.trim();
+    if (tAttr && tAttr.trim()) baseName = tAttr.trim();
     if (!baseName) {
-      // fallback: textContent 按行拆分取首行含 | 的文本
-      // sell 页多行各含数量/价格/状态 → split 后每行天然干净
-      // inventory 页可能单行含杂质 → 正则剔除 x1 / ¥ / 在售
+      // fallback: textContent 按行拆分取首行含有效文本
       const lines = titleEl.textContent.split(/[\r\n]+/);
       for (const line of lines) {
         const trimmed = line.trim();
-        if (trimmed.includes('|') && trimmed.length > 2) {
+        if (trimmed.length > 2) {
           baseName = trimmed.replace(/\s*x\d+\s*/g, '')
                            .replace(/\s*[¥￥]\s*[\d.]+\s*/g, '')
                            .replace(/\s*在售\s*/g, '')
@@ -666,19 +673,43 @@
 
     const btn = document.createElement('button');
     btn.className = 'igxe-copy-btn';
-    btn.title = '复制物品名称';
+    btn.title = '搜索此物品';
     btn.textContent = '📋';
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      navigator.clipboard.writeText(name).then(() => {
-        btn.textContent = '✓';
-        btn.classList.add('igxe-copied');
+
+      // 填入搜索框并触发搜索
+      const searchInput = document.getElementById('store_search_key');
+      const searchBtn   = document.getElementById('js-btn-search-key');
+      if (searchInput && searchBtn) {
+        searchInput.value = name;
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+        // 移除 javascript: href 避免 CSP 报错，然后触发点击
+        const searchHref = searchBtn.getAttribute('href');
+        if (searchHref) searchBtn.removeAttribute('href');
+        searchBtn.click();
+        if (searchHref) searchBtn.setAttribute('href', searchHref);
+
+        // 勾选全选
         setTimeout(() => {
-          btn.textContent = '📋';
-          btn.classList.remove('igxe-copied');
-        }, 1200);
-      }).catch(() => {});
+          const checkAll = document.getElementById('js-check-all');
+          if (checkAll) {
+            checkAll.click();
+          }
+        }, 200);
+      }
+
+      // 同时写入剪贴板（保留原有能力）
+      navigator.clipboard.writeText(name).catch(() => {});
+
+      btn.textContent = '✓';
+      btn.classList.add('igxe-copied');
+      setTimeout(() => {
+        btn.textContent = '📋';
+        btn.classList.remove('igxe-copied');
+      }, 1200);
     });
 
     card.style.position = card.style.position || 'relative';
