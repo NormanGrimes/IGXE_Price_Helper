@@ -1,4 +1,4 @@
-# IGXE Price Helper v1.0.4
+# IGXE Price Helper v1.0.5
 
 在 IGXE 饰品库存页（`/inventory/skins/730`）和我的在架页（`/sell/730`）自动展示 Steam 参考价和自动发货最低价。
 
@@ -83,6 +83,7 @@
 igxe-price-helper/
 ├── manifest.json         ← MV3 配置（版本号、权限、注入规则）
 ├── background.js         ← Service Worker（兼容旧消息接口）
+├── content-shared.js     ← 共享核心模块（工厂模式 createApp）
 ├── content-inventory.js  ← 库存页注入脚本
 ├── content-sell.js       ← 在售页注入脚本
 ├── injected.css          ← 注入样式（价格标签颜色/布局）
@@ -149,6 +150,20 @@ GET /product/trade/730/{productId}?buy_method={0,1,2}&sort=0&sort_rule=0
 
 ## 版本记录
 
+### v1.0.5 — 2026-06-09
+
+- ✅ **架构重构（P0-1）**：提取 `content-shared.js` 共享核心模块
+  - 工厂模式 `window.IGXEShared.createApp(cfg)` 消除两页面脚本 ~70% 重复代码
+  - 统一缓存管理、价格获取、卡片扫描、弹窗注入、Observer 等所有公共逻辑
+  - 页面脚本仅保留各自特有逻辑（Bot 过滤、load-more 拦截、贩卖总数监测）
+- ✅ **代码优化（P0-2）**：`forceRefreshAll` 增加 `AbortController`
+  - 刷新时终止进行中的 `fetch` 请求，避免旧请求污染新状态
+  - `fetchSteamPrice` / `fetchAutoDeliveryPrice` 接受 `signal` 参数，`AbortError` 向上传播
+  - `processQueue` 循环入口检查信号状态，提前退出
+- ✅ **修复**：重构漏掉 `loadCache` 解构，导致插件完全失效
+- ✅ **修复**：全选已勾选状态下搜索，先反选再搜索再全选（竞态修复）
+- ✅ **修复**：库存页「确认出售」后执行空搜索刷新全部卡片
+
 ### v1.0.4 — 2026-06-08
 
 - ✅ **功能升级**：卡片 📋 按钮从「复制名称」改为「搜索此物品」
@@ -205,7 +220,7 @@ GET /product/trade/730/{productId}?buy_method={0,1,2}&sort=0&sort_rule=0
 
 - 需要登录 IGXE 账号才能获取完整价格数据
 - 仅支持 CS2 库存页（`/inventory/skins/730`）和我的在架页（`/sell/730`）
-- **[待办]** 在售页「确认出售」后自动重新搜索 — 已尝试轮询检测售出弹窗关闭方案，但仍未生效，需进一步排查 IGXE 页面售出流程的确切 DOM 变化时机
+- **[待办]** P0-3: 弹窗 `findRefPriceCell` 策略 3（纯数字匹配）存在误匹配风险
 
 ---
 
