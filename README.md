@@ -30,8 +30,6 @@
 4. 选择 `igxe-price-helper` 目录
 5. 确认扩展已启用
 
-> 首次安装需准备图标文件：在 `igxe-price-helper/icons/` 目录下放置 `icon16.png`、`icon48.png`、`icon128.png`。
-
 ---
 
 ## 使用方法
