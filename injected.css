@@ -191,3 +191,32 @@
 .igxe-sell-listed {
   color: #4caf50;
 }
+
+/* ========================
+   重复在售标记 — 橙色边框
+   ======================== */
+.game-unit.igxe-duplicate-listed {
+  outline: 2px solid #ff9800;
+  outline-offset: -2px;
+  box-shadow: 0 0 6px rgba(255, 152, 0, 0.25);
+}
+
+/* ========================
+   已在售价格显示（绝对定位浮动标签）
+   ======================== */
+.igxe-listed-price {
+  color: #ff9800;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  white-space: nowrap;
+  position: absolute;
+  top: 30px;           /* 复制按钮下方，不遮挡图片主体 */
+  left: 4px;
+  z-index: 15;
+  background: rgba(0, 0, 0, 0.70);
+  border: 1px solid rgba(255, 152, 0, 0.5);
+  border-radius: 3px;
+  pointer-events: none;
+  line-height: 1.3;
+}

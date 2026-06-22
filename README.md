@@ -1,4 +1,4 @@
-# IGXE Price Helper v1.0.5
+# IGXE Price Helper v1.0.6
 
 在 IGXE 饰品库存页（`/inventory/skins/730`）和我的在架页（`/sell/730`）自动展示 Steam 参考价和自动发货最低价。
 
@@ -9,6 +9,9 @@
 - 自动在每张饰品卡片下方显示 **Steam 参考价**
 - 自动显示 **自动发货最低价**（无自动发货商品时显示全部在售底价）
 - 📋 每张卡片右上角悬浮 **搜索按钮**，点击将物品名称填入顶部搜索框并触发搜索，同时写入剪贴板
+- 🟠 **库存页**自动标注已在售物品（橙色边框），避免自己压自己价格
+- 🏷️  已在售物品显示**当前在售价格**（橙色浮动标签），无需切换页面
+- 📊 贩卖总数旁显示**出售/上架差值**，页面刷新后对比基线常驻显示
 - 同款道具按 `productId` 去重，只请求一次，所有同名卡片同步更新
 - 逐个请求，间隔 3 秒，获取后立即显示，支持滚动懒加载
 - 切换 Steam 账号（Bot ID）时自动清空并重新获取
@@ -150,6 +153,25 @@ GET /product/trade/730/{productId}?buy_method={0,1,2}&sort=0&sort_rule=0
 
 ## 版本记录
 
+### v1.0.6 — 2026-06-10
+
+**P0 修复**
+- ✅ **P0-3**：弹窗 `findRefPriceCell` 策略 3 误匹配风险 — 分两遍扫描：优先匹配含 `￥`/`¥` 的单元格；第二遍纯数字必须含小数点
+- ✅ **TOCTOU 防御**：`fetchSteamPrice` / `fetchAutoDeliveryPrice` 入口检查 `signal.aborted`，统一为 `AbortError`
+
+**新功能**
+- ✅ **库存页已在售标记**：在售页扫描卡片同步 `productId` 列表到 `localStorage`（TTL 30min），库存页匹配卡片标记橙色边框
+- ✅ **在售价格显示**：库存页橙色边框物品显示当前在售价格，数据通过直接调用真实 API `GET /sell/data/730` 获取（`status_type=9`，支持多页遍历），独立缓存 TTL 5min
+- ✅ **贩卖总数差值**：页面刷新时对比上次访问的基线总数，显示 `-出售 N` 或 `+上架 N`；搜索过滤时不误报
+
+**UI 修复**
+- ✅ 库存页价格行排布修正（`margin-top: -3px` CSS 微调）
+- ✅ 在售价格标签改为绝对定位浮动标签（`top: 30px; left: 4px`），不占文档流、不挤走 Steam 价格
+
+**内部改进**
+- ✅ 上架 API 逆向文档（`API-DOCS.md`）：记录 `check-purchase-before-add-product` / `confirm_sell` / `add_product` 三个核心端点
+- ✅ `extractIdsFromApiResponse()` 兼容 6 种 JSON 结构（`show_data`、`page.page_rows`、`d_list` 等）
+
 ### v1.0.5 — 2026-06-09
 
 - ✅ **架构重构（P0-1）**：提取 `content-shared.js` 共享核心模块
@@ -220,7 +242,6 @@ GET /product/trade/730/{productId}?buy_method={0,1,2}&sort=0&sort_rule=0
 
 - 需要登录 IGXE 账号才能获取完整价格数据
 - 仅支持 CS2 库存页（`/inventory/skins/730`）和我的在架页（`/sell/730`）
-- **[待办]** P0-3: 弹窗 `findRefPriceCell` 策略 3（纯数字匹配）存在误匹配风险
 
 ---
 

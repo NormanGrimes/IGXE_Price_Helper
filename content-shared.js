@@ -1,4 +1,4 @@
-// IGXE Price Helper - 共享核心模块 v1.0.5
+// IGXE Price Helper - 共享核心模块 v1.0.6
 // 由 content-sell.js 和 content-inventory.js 通过 createApp(cfg) 调用
 
 (function(global) {
@@ -83,6 +83,7 @@
       const steamCache = new Map();
 
       async function fetchSteamPrice(productId, signal) {
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
         const c = steamCache.get(productId);
         if (c && Date.now() - c.time < STEAM_CACHE_TTL) return c.price;
         try {
@@ -98,6 +99,7 @@
 
       // ======================== 自动发货价格 ========================
       async function fetchAutoDeliveryPrice(productId, signal) {
+        if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
         const _extract = (data, label) => {
           if (data.page && Array.isArray(data.page.page_rows) && data.page.page_rows.length>0) {
             const ps = data.page.page_rows.map(i=>parseFloat(i.unit_price||i.price)).filter(p=>!isNaN(p)&&p>0);
@@ -398,9 +400,18 @@
       function findRefPriceCell(row, colIndex) {
         if (colIndex>=0) { const cs=row.querySelectorAll('td'); if (cs[colIndex]) return cs[colIndex]; }
         const r=row.querySelector('[class*="ref"],[class*="reference"]'); if (r) return r;
-        for (const c of row.querySelectorAll('td,[class*="cell"],[class*="col"]')) {
+        // Strategy 3: 分两遍扫描，避免误匹配数量单元格
+        // 第一遍：优先匹配含货币符号的单元格（最可靠）
+        for (const c of row.querySelectorAll('td,[class*="price"],[class*="cell"],[class*="col"]')) {
           if (c.querySelector('input,textarea')) continue;
-          const t=c.textContent.trim(); if (/^\d+(\.\d{1,2})?$/.test(t)) return c;
+          const t=c.textContent.trim();
+          if (/[￥¥]/.test(t) && /\d/.test(t)) return c;
+        }
+        // 第二遍：纯数字单元格，必须有小数点（排除纯整数数量如 1、2）
+        for (const c of row.querySelectorAll('td')) {
+          if (c.querySelector('input,textarea')) continue;
+          const t=c.textContent.trim();
+          if (/^\d+\.\d{1,2}$/.test(t)) return c;
         }
         return null;
       }
@@ -471,7 +482,7 @@
         extractProductIdFromRow, getRefPriceColumnIndex, findRefPriceCell, injectPriceToCell,
         injectModalPrices, startModalWatcher,
         startObserver, forceRefreshAll, handleMessage,
-        updateCardPrice,
+        updateCardPrice, getOrCreatePriceOverlay,
         // 状态访问
         get priceCache() { return priceCache; },
         get pendingQueue() { return pendingQueue; },
