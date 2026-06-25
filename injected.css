@@ -1,5 +1,13 @@
 /* IGXE Price Helper - 注入样式 */
 
+/* ========================
+   隐藏 IGXE 原生市场价标签（市:¥xx）
+   数据保留在 DOM 中，仅视觉隐藏
+   ======================== */
+.cash-market {
+  display: none !important;
+}
+
 /* 价格信息容器 */
 .igxe-helper-price {
   display: flex;
@@ -72,6 +80,16 @@
 .igxe-sell-cache-info {
   font-size: 12px;
   color: #7a7a9a;
+}
+
+.igxe-sell-timer {
+  margin-left: auto;
+  margin-right: 12px;
+  font-size: 12px;
+  color: #ff9800;
+  font-family: 'Consolas', 'Monaco', monospace;
+  letter-spacing: 0.5px;
+  user-select: none;
 }
 
 .igxe-sell-refresh-btn {

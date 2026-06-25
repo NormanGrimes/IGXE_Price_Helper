@@ -1,4 +1,4 @@
-// IGXE Price Helper - 共享核心模块 v1.0.6
+// IGXE Price Helper - 共享核心模块 v1.0.7
 // 由 content-sell.js 和 content-inventory.js 通过 createApp(cfg) 调用
 
 (function(global) {
@@ -18,7 +18,7 @@
       function warn(...args) { try { console.warn(P, ...args); } catch(e) {} }
 
       // ======================== 常量 ========================
-      const REQUEST_INTERVAL  = 3000;
+      const REQUEST_INTERVAL  = 2000;
       const OBSERVER_DEBOUNCE = 500;
       const CACHE_TTL         = 24 * 60 * 60 * 1000;
       const STEAM_CACHE_TTL   = 5 * 60 * 1000;
@@ -338,16 +338,39 @@
       }
 
       function getCardItemName(card) {
-        const te = card.querySelector('.g_title'); if (!te) return null;
         let bn = null;
-        const ta = te.getAttribute('title'); if (ta&&ta.trim()) bn=ta.trim();
-        if (!bn) {
-          for (const l of te.textContent.split(/[\r\n]+/)) {
-            const t=l.trim(); if (t.length>2) { bn=t.replace(/\s*x\d+\s*/g,'').replace(/\s*[¥￥]\s*[\d.]+\s*/g,'').replace(/\s*在售\s*/g,'').trim(); break; }
+
+        // 优先从 g_name > a[title] 读取（新版 IGXE 结构）
+        const na = card.querySelector('.g_name a[title]');
+        if (na) { bn = na.getAttribute('title').trim(); }
+
+        // 降级：g_title[title]（旧版结构）
+        if (!bn || bn.length <= 2) {
+          const te = card.querySelector('.g_title');
+          if (te) {
+            const ta = te.getAttribute('title');
+            if (ta && ta.trim().length > 2) bn = ta.trim();
           }
         }
-        if (!bn) return null;
-        const w = getWearText(card); if (w&&!bn.includes(w)) return `${bn} (${w})`;
+
+        // 最终降级：从 g_name a 的 textContent 读取
+        if (!bn || bn.length <= 2) {
+          const na2 = card.querySelector('.g_name a');
+          if (na2 && na2.textContent.trim().length > 2) bn = na2.textContent.trim();
+        }
+
+        // 安全检查：拒绝含"市:"的脏数据（IGXE 新增的 cash-market 标签）
+        if (bn && bn.includes('市:')) {
+          console.warn('[IGXE-Shared] getCardItemName: 拒绝脏数据="%s"', bn);
+          return null;
+        }
+
+        if (!bn || bn.length <= 2) return null;
+
+        // 追加磨损值（旧版 DOM 可能不含磨损，从 card 内提取）
+        const w = getWearText(card);
+        if (w && !bn.includes(w)) bn = `${bn} (${w})`;
+
         return bn;
       }
 

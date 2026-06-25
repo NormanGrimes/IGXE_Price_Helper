@@ -1,6 +1,6 @@
 // IGXE Price Helper - 库存页
 // https://www.igxe.cn/inventory/skins/*
-// v1.0.6 — 使用 content-shared.js
+// v1.0.7 — 使用 content-shared.js
 
 (function () {
   'use strict';
@@ -76,6 +76,14 @@
       injectListedPrices();
       setInterval(markAlreadyListed, 5000);
       setInterval(injectListedPrices, 5000);
+
+      // 每 4 分钟主动刷新在售缓存，防止 TTL 到期后边框/标签丢失
+      setInterval(async () => {
+        console.log('[IGXE-Inv] 定时刷新在售缓存...');
+        await fetchAndCacheListedItems();
+        markAlreadyListed();
+        injectListedPrices();
+      }, 4 * 60 * 1000);
 
       // 定价出售时清空搜索框
       const psb = document.getElementById('js-local-store-igxe');
@@ -279,11 +287,44 @@
     return new Set(d.ids);
   }
 
+  /* 降级版：缓存过期仍返回数据，保证边框不丢 */
+  function getListedProductIdsGraceful() {
+    let d;
+    try {
+      const r = localStorage.getItem(LISTED_CACHE_KEY);
+      if (r) {
+        d = JSON.parse(r);
+        if (d && Array.isArray(d.ids) && d.ids.length) {
+          const age = Date.now() - (d.ts || 0);
+          if (age > LISTED_CACHE_TTL) {
+            console.log('[IGXE-Inv] getListedProductIdsGraceful: 缓存已过期', Math.round(age/1000), '秒，仍降级使用');
+          } else {
+            console.log('[IGXE-Inv] getListedProductIdsGraceful: 缓存有效, ids=', d.ids.length);
+          }
+          return new Set(d.ids);
+        }
+      }
+    } catch(e) {}
+    // 最终降级：旧格式
+    try {
+      const r = localStorage.getItem('igxe_listed_product_ids');
+      if (r) {
+        const o = JSON.parse(r);
+        if (o && Array.isArray(o.ids) && o.ids.length) {
+          console.log('[IGXE-Inv] getListedProductIdsGraceful: 使用旧格式降级');
+          return new Set(o.ids);
+        }
+      }
+    } catch(e) {}
+    console.log('[IGXE-Inv] getListedProductIdsGraceful: 无任何数据');
+    return new Set();
+  }
+
   function markAlreadyListed() {
-    document.querySelectorAll('.game-unit.igxe-duplicate-listed').forEach(c => c.classList.remove('igxe-duplicate-listed'));
-    const listed = getListedProductIds();
+    const listed = getListedProductIdsGraceful();
     console.log('[IGXE-Inv] markAlreadyListed: 在售ID数量=', listed.size);
     if (!listed.size) { console.log('[IGXE-Inv] markAlreadyListed: 无在售数据，跳过'); return; }
+    document.querySelectorAll('.game-unit.igxe-duplicate-listed').forEach(c => c.classList.remove('igxe-duplicate-listed'));
     const cards = document.querySelectorAll('.game-unit');
     console.log('[IGXE-Inv] markAlreadyListed: 库存卡片总数=', cards.length);
     let matched = 0;
