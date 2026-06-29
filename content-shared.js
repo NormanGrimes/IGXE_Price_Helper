@@ -439,6 +439,108 @@
         return null;
       }
 
+      // ======================== 建议出售价格 ========================
+      /**
+       * 从 localStorage 读取当前在售价格
+       */
+      function getListedPrice(productId) {
+        try {
+          const raw = localStorage.getItem('igxe_listed_product_prices');
+          if (!raw) return null;
+          const data = JSON.parse(raw);
+          if (data && data.prices && data.prices[productId] != null) {
+            const p = parseFloat(data.prices[productId]);
+            return isFinite(p) && p > 0 ? p : null;
+          }
+        } catch(e) {}
+        return null;
+      }
+
+      /**
+       * 计算建议出售价格（在售页改价算法 v1.0.8-P0 优化）
+       *
+       * 算法逻辑：
+       * 1. 获取当前在售价格，与 Steam 价格对比
+       * 2. 如果在售价格 > Steam 价格（定高了），按超额比例动态降价：
+       *    - 计算超额比例：(在售价 - Steam 价) / Steam 价
+       *    - 超额 > 10%：降 5%（大幅超额，激进降价）
+       *    - 超额 5%~10%：降 3%（中度超额）
+       *    - 超额 < 5%：降 1%（轻微超额，微调）
+       *    - 单次降价下限 ¥0.1，上限 20%（防止极端情况）
+       * 3. 如果在售价格 < Steam 价格，对比自动发货最低价：
+       *    - 差价 < 0.2 元：建议 = 自动发货最低价 - 0.02 元
+       *    - 差价 >= 0.2 元：建议 = 当前在售价格 - 0.2 元
+       * 4. 强制前提：建议价 < Steam * 0.75 → 强制设为 Steam * 0.75
+       *
+       * @param {Object} priceData - 价格数据 { steamPrice, autoPrice, isAuto }
+       * @param {string} productId - 产品 ID
+       * @returns {number|null} 建议出售价格（保留 2 位小数），返回 null 表示无法计算
+       */
+      function calculateSuggestedPrice(priceData, productId) {
+        const listedPrice = getListedPrice(productId);
+        if (listedPrice == null) {
+          log(`建议价计算失败(pid=${productId}): 未找到当前在售价格`);
+          return null;
+        }
+
+        const steamPrice = priceData.steamPrice;
+        if (steamPrice == null || steamPrice <= 0) {
+          log(`建议价计算失败(pid=${productId}): Steam 参考价无效`);
+          return null;
+        }
+
+        let candidate = null;
+
+        if (listedPrice > steamPrice) {
+          // 情况 A：在售价格高于 Steam 价格，按超额比例动态降价
+          const overRatio = (listedPrice - steamPrice) / steamPrice;
+
+          let reductionRatio;
+          if (overRatio > 0.10) {
+            // 超额 > 10%：激进降价 5%
+            reductionRatio = 0.05;
+          } else if (overRatio > 0.05) {
+            // 超额 5%~10%：中度降价 3%
+            reductionRatio = 0.03;
+          } else {
+            // 超额 < 5%：微调 1%
+            reductionRatio = 0.01;
+          }
+
+          // 计算降价金额
+          let reduction = listedPrice * reductionRatio;
+
+          // 限制降价幅度：单次至少降 ¥0.1，最多降 20%
+          reduction = Math.max(0.1, Math.min(reduction, listedPrice * 0.2));
+
+          candidate = listedPrice - reduction;
+
+          log(`建议价计算(pid=${productId}): 超额${overRatio.toFixed(3)} ` +
+               `→ 降价${reduction.toFixed(2)}元(${(reductionRatio * 100).toFixed(0)}%) ` +
+               `${listedPrice.toFixed(2)} → ${candidate.toFixed(2)}`);
+        } else {
+          // 情况 B：在售价格低于 Steam 价格，对比自动发货最低价
+          const autoPrice = priceData.autoPrice;
+          if (autoPrice != null && Math.abs(listedPrice - autoPrice) < 0.2) {
+            // 差价小于 0.2 元，说明价格跟自动发货很接近，建议比它更低
+            candidate = autoPrice - 0.02;
+          } else {
+            // 差价够大，适当降价
+            candidate = listedPrice - 0.2;
+          }
+        }
+
+        // 强制前提：建议价不得低于 Steam 价格的 0.75 倍
+        const minAllowed = steamPrice * 0.75;
+        if (candidate < minAllowed) {
+          log(`建议价强制底线(pid=${productId}): ${candidate.toFixed(2)} → ${minAllowed.toFixed(2)}`);
+          candidate = minAllowed;
+        }
+
+        // 保留 2 位小数，且必须 > 0
+        return Math.max(0.01, Math.round(candidate * 100) / 100);
+      }
+
       function injectPriceToCell(cell, productId) {
         const o=cell.querySelector('.igxe-modal-price'); if (o) o.remove();
         const c=priceCache[productId]; if (!c) return;
@@ -446,6 +548,86 @@
         if (c.steamPrice!=null) w.innerHTML+=`<span class="igxe-modal-steam">Steam ¥${c.steamPrice.toFixed(2)}</span>`;
         if (c.autoPrice!=null) { const lb=c.isAuto?'自动':'底价', cl=c.isAuto?'igxe-modal-auto':'igxe-modal-lowest'; w.innerHTML+=`<span class="${cl}">${lb} ¥${c.autoPrice.toFixed(2)}</span>`; }
         else if (c.steamPrice==null) w.innerHTML+='<span class="igxe-modal-na">暂无数据</span>';
+        // 建议出售价格（可点击填入）
+        const suggested = calculateSuggestedPrice(c, productId);
+        if (suggested != null) {
+          const el = document.createElement('span');
+          el.className = 'igxe-modal-suggest';
+          el.textContent = `建议 ¥${suggested.toFixed(2)}`;
+          el.title = '点击填入此价格';
+          el.addEventListener('click', (e) => {
+            e.stopPropagation(); e.preventDefault();
+            const val = suggested.toFixed(2);
+            const numVal = parseFloat(val);
+            let updated = false;
+
+            // 策略：通过输入框的 DOM 找到真正的 Vue 实例
+            const input = document.querySelector('.layui-layer input[id^="price_"], .layui-layer input[type="text"][class*="com-text"]');
+            if (input) {
+              // 方法1：通过 input.__vue__ 找到 Vue 组件，再找到根实例
+              let vueInst = null;
+              let item = null;
+              try {
+                // 尝试从 DOM 找到 Vue 实例
+                let cur = input;
+                while (cur && !vueInst) {
+                  if (cur.__vue__) {
+                    vueInst = cur.__vue__;
+                    // 向上找到根实例
+                    while (vueInst.$parent) vueInst = vueInst.$parent;
+                    break;
+                  }
+                  cur = cur.parentElement;
+                }
+
+                // 如果找不到，尝试全局变量
+                if (!vueInst) {
+                  vueInst = window.change_price || window.change_price_box;
+                }
+
+                if (vueInst && vueInst.show_data && vueInst.show_data.length > 0) {
+                  item = vueInst.show_data[0]; // 单个改价时就是第一个
+                  item.unit_price = numVal;
+                  if (typeof vueInst.calc_price === 'function') vueInst.calc_price();
+                  updated = true;
+                  log(`✓ Vue 数据已更新: ¥${val}`);
+                }
+              } catch(ex) {
+                warn('Vue 更新失败:', ex.message);
+              }
+
+              // 方法2：直接设置输入框值并触发正确的事件序列
+              // 先聚焦
+              input.focus();
+              // 用 native setter 设置值（绕过 Vue 的虚拟 DOM）
+              const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+              nativeSetter.call(input, val);
+              // 触发 Vue 监听的 keyup 事件
+              input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, cancelable: true }));
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              // 如果用 jQuery
+              if (window.jQuery) {
+                window.jQuery(input).val(val).trigger('keyup').trigger('input');
+              }
+              log(`✓ 输入框已填入: ¥${val}`);
+              updated = true;
+            }
+
+            if (updated) {
+              el.textContent = '✓ 已填入';
+              el.classList.add('igxe-modal-suggest-filled');
+              setTimeout(() => {
+                el.textContent = `建议 ¥${val}`;
+                el.classList.remove('igxe-modal-suggest-filled');
+              }, 1500);
+            } else {
+              warn(`未找到输入框(pid=${productId})`);
+              el.textContent = '⚠ 填入失败';
+              setTimeout(() => { el.textContent = `建议 ¥${suggested.toFixed(2)}`; }, 1500);
+            }
+          });
+          w.appendChild(el);
+        }
         cell.appendChild(w);
       }
 

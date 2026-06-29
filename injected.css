@@ -147,6 +147,29 @@
   font-size: 10px;
 }
 
+/* 建议出售价格 - 蓝色高亮，可点击 */
+.igxe-modal-suggest {
+  color: #2196f3;
+  font-weight: 700;
+  white-space: nowrap;
+  margin-top: 2px;
+  padding-top: 2px;
+  border-top: 1px dashed rgba(33, 150, 243, 0.3);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.igxe-modal-suggest:hover {
+  background: rgba(33, 150, 243, 0.12);
+  border-radius: 2px;
+}
+
+/* 建议价已填入的反馈状态 */
+.igxe-modal-suggest-filled {
+  color: #4caf50 !important;
+  cursor: default;
+}
+
 /* ========================
    卡片复制按钮
    ======================== */
